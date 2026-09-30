@@ -50,7 +50,9 @@ public class PackagingReleaseAgent
         // 1. Build the zip from approved redacted documents, rendering each as a PDF first.
         var docs = await _db.Documents
             .AsNoTracking()
-            .Where(d => d.FoiaRequestId == requestId && d.ReviewStatus == ReviewStatus.Approved)
+            .Where(d => d.FoiaRequestId == requestId
+                && d.ReviewStatus == ReviewStatus.Approved
+                && d.IncludeInRelease)
             .Select(d => new { d.FileName, Content = d.RedactedContent ?? d.OriginalContent })
             .ToListAsync(ct);
 

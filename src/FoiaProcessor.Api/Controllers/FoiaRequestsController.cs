@@ -211,7 +211,8 @@ public class FoiaRequestsController : ControllerBase
                 d.FileType,
                 d.RedactionStatus.ToString(),
                 d.ReviewStatus.ToString(),
-                d.Redactions.Count))
+                d.Redactions.Count,
+                d.IncludeInRelease))
             .ToListAsync(ct);
 
         return Ok(new DocumentsListDto(id, docs));
