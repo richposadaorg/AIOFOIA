@@ -90,6 +90,9 @@ namespace FoiaProcessor.Data.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<bool>("IncludeInRelease")
+                        .HasColumnType("bit");
+
                     b.Property<string>("SourceDocumentId")
                         .IsRequired()
                         .HasMaxLength(200)

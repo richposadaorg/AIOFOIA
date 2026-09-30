@@ -95,7 +95,8 @@ public record DocumentReviewDto(
     string OriginalContent,
     string? RedactedContent,
     IReadOnlyList<DocumentRedactionDto> Redactions,
-    string ReviewStatus);
+    string ReviewStatus,
+    bool IncludeInRelease);
 
 public record ApproveDocumentRequestDto(string? Comments);
 public record ApproveDocumentResponseDto(Guid Id, string ReviewStatus, DateTime ApprovedAt);

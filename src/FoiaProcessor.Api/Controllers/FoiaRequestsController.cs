@@ -236,6 +236,15 @@ public class FoiaRequestsController : ControllerBase
                 detail = "Every document must be approved before the release can be approved.",
             });
         }
+        if (!request.Documents.Any(d => d.IncludeInRelease))
+        {
+            return Conflict(new
+            {
+                title = "No documents selected for release.",
+                status = 409,
+                detail = "Select at least one approved document before approving the release.",
+            });
+        }
 
         await _review.RecordReleaseApprovalAsync(new RecordReleaseApprovalInput(id, null), ct);
         await _case.CaseUpdateStatusAsync(

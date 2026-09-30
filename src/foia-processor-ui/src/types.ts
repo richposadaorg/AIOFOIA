@@ -102,6 +102,7 @@ export type DocumentSummary = {
     fileType: string;
     redactionStatus: string;
     reviewStatus: string;
+    includeInRelease: boolean;
     redactionCount: number;
 };
 
@@ -118,6 +119,7 @@ export type DocumentRedaction = {
     confidence: number | null;
     detectionSource: string;
     reviewerApproved: boolean | null;
+    reviewerComments: string | null;
 };
 
 export type DocumentReview = {

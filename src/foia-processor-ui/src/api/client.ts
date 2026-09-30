@@ -93,6 +93,31 @@ export const rejectDocument = (id: string, comments: string) =>
 export const deleteDocument = (id: string) =>
     request<void>(`/api/documents/${id}`, { method: "DELETE" });
 
+export const addRedaction = (id: string, redaction: {
+    piiType: string;
+    originalText: string;
+    replacementText: string;
+}) =>
+    request<DocumentReview["redactions"][number]>(`/api/documents/${id}/redactions`, {
+        method: "POST",
+        body: JSON.stringify(redaction),
+    });
+
+export const updateRedaction = (documentId: string, redactionId: string, replacementText: string) =>
+    request<void>(`/api/documents/${documentId}/redactions/${redactionId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ replacementText, reviewerComments: null }),
+    });
+
+export const removeRedaction = (documentId: string, redactionId: string) =>
+    request<void>(`/api/documents/${documentId}/redactions/${redactionId}`, { method: "DELETE" });
+
+export const setReleaseSelection = (id: string, includeInRelease: boolean) =>
+    request<{ id: string; includeInRelease: boolean }>(`/api/documents/${id}/release-selection`, {
+        method: "PUT",
+        body: JSON.stringify({ includeInRelease }),
+    });
+
 export const approveRelease = (id: string) =>
     request<{ id: string; status: string; approvedAt: string }>(
         `/api/foiarequests/${id}/approve-release`,

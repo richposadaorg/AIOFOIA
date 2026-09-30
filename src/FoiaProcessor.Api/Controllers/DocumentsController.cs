@@ -51,7 +51,8 @@ public class DocumentsController : ControllerBase
                     r.StartOffset, r.EndOffset, r.PageNumber, r.Confidence,
                     r.DetectionSource.ToString(), r.ReviewerApproved, r.ReviewerComments))
                 .ToList(),
-            doc.ReviewStatus.ToString());
+            doc.ReviewStatus.ToString(),
+            doc.IncludeInRelease);
         return Ok(dto);
     }
 
@@ -78,14 +79,15 @@ public class DocumentsController : ControllerBase
 
         var doc = await _db.Documents.Include(d => d.Redactions).FirstOrDefaultAsync(d => d.Id == id, ct);
         if (doc is null) return NotFound(new { title = "Not Found", status = 404 });
+        var startOffset = dto.StartOffset ?? doc.OriginalContent.IndexOf(dto.OriginalText, StringComparison.Ordinal);
         var redaction = new Redaction
         {
             DocumentId = id,
             PiiType = piiType,
             OriginalText = dto.OriginalText,
             ReplacementText = dto.ReplacementText,
-            StartOffset = dto.StartOffset,
-            EndOffset = dto.EndOffset,
+            StartOffset = startOffset >= 0 ? startOffset : null,
+            EndOffset = dto.EndOffset ?? (startOffset >= 0 ? startOffset + dto.OriginalText.Length : null),
             PageNumber = dto.PageNumber,
             DetectionSource = DetectionSource.Ai,
             ReviewerApproved = true,
@@ -105,28 +107,31 @@ public class DocumentsController : ControllerBase
     public async Task<IActionResult> UpdateRedaction(Guid id, Guid redactionId,
         [FromBody] UpdateRedactionRequestDto dto, CancellationToken ct)
     {
-        var redaction = await _db.Redactions.Include(r => r.Document)
+        var redaction = await _db.Redactions
             .FirstOrDefaultAsync(r => r.Id == redactionId && r.DocumentId == id, ct);
-        if (redaction is null) return NotFound(new { title = "Not Found", status = 404 });
+        var document = await _db.Documents.Include(d => d.Redactions)
+            .FirstOrDefaultAsync(d => d.Id == id, ct);
+        if (redaction is null || document is null) return NotFound(new { title = "Not Found", status = 404 });
         if (dto is null || string.IsNullOrWhiteSpace(dto.ReplacementText))
             return BadRequest(new { title = "Replacement text is required.", status = 400 });
         redaction.ReplacementText = dto.ReplacementText;
         redaction.ReviewerComments = dto.ReviewerComments;
         redaction.ReviewerApproved = true;
-        RebuildRedactedContent(redaction.Document!);
+        RebuildRedactedContent(document);
         await _db.SaveChangesAsync(ct);
-        await _audit.RecordAsync(redaction.Document!.FoiaRequestId, AuditEventType.RedactionUpdated,
-            $"Reviewer updated a redaction in '{redaction.Document.FileName}'.", id, ct);
+        await _audit.RecordAsync(document.FoiaRequestId, AuditEventType.RedactionUpdated,
+            $"Reviewer updated a redaction in '{document.FileName}'.", id, ct);
         return NoContent();
     }
 
     [HttpDelete("{id:guid}/redactions/{redactionId:guid}")]
     public async Task<IActionResult> RemoveRedaction(Guid id, Guid redactionId, CancellationToken ct)
     {
-        var redaction = await _db.Redactions.Include(r => r.Document)
+        var redaction = await _db.Redactions
             .FirstOrDefaultAsync(r => r.Id == redactionId && r.DocumentId == id, ct);
-        if (redaction is null) return NotFound(new { title = "Not Found", status = 404 });
-        var document = redaction.Document!;
+        var document = await _db.Documents.Include(d => d.Redactions)
+            .FirstOrDefaultAsync(d => d.Id == id, ct);
+        if (redaction is null || document is null) return NotFound(new { title = "Not Found", status = 404 });
         _db.Redactions.Remove(redaction);
         RebuildRedactedContent(document, redaction);
         await _db.SaveChangesAsync(ct);
@@ -151,12 +156,17 @@ public class DocumentsController : ControllerBase
     {
         var content = document.OriginalContent;
         foreach (var r in document.Redactions
-                     .Where(r => r != removed && r.StartOffset.HasValue && r.EndOffset.HasValue)
-                     .OrderByDescending(r => r.StartOffset))
+                     .Where(r => r != removed)
+                     .Select(r => (redaction: r, start: r.StartOffset ?? document.OriginalContent.IndexOf(r.OriginalText, StringComparison.Ordinal)))
+                     .Where(x => x.start >= 0)
+                     .OrderByDescending(x => x.start))
         {
-            var start = Math.Clamp(r.StartOffset!.Value, 0, content.Length);
-            var end = Math.Clamp(r.EndOffset!.Value, start, content.Length);
-            content = content[..start] + r.ReplacementText + content[end..];
+            var start = Math.Clamp(r.start, 0, content.Length);
+            var length = r.redaction.EndOffset.HasValue && r.redaction.StartOffset.HasValue
+                ? r.redaction.EndOffset.Value - r.redaction.StartOffset.Value
+                : r.redaction.OriginalText.Length;
+            var end = Math.Clamp(start + length, start, content.Length);
+            content = content[..start] + r.redaction.ReplacementText + content[end..];
         }
         document.RedactedContent = content;
     }
