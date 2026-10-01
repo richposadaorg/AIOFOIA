@@ -211,7 +211,8 @@ public class FoiaRequestsController : ControllerBase
                 d.FileType,
                 d.RedactionStatus.ToString(),
                 d.ReviewStatus.ToString(),
-                d.Redactions.Count))
+                d.Redactions.Count,
+                d.IncludeInRelease))
             .ToListAsync(ct);
 
         return Ok(new DocumentsListDto(id, docs));
@@ -233,6 +234,15 @@ public class FoiaRequestsController : ControllerBase
                 title = "Not all documents approved.",
                 status = 409,
                 detail = "Every document must be approved before the release can be approved.",
+            });
+        }
+        if (!request.Documents.Any(d => d.IncludeInRelease))
+        {
+            return Conflict(new
+            {
+                title = "No documents selected for release.",
+                status = 409,
+                detail = "Select at least one approved document before approving the release.",
             });
         }
 

@@ -70,7 +70,8 @@ public record DocumentSummaryDto(
     string FileType,
     string RedactionStatus,
     string ReviewStatus,
-    int RedactionCount);
+    int RedactionCount,
+    bool IncludeInRelease);
 
 public record DocumentsListDto(Guid RequestId, IReadOnlyList<DocumentSummaryDto> Documents);
 
@@ -84,7 +85,8 @@ public record DocumentRedactionDto(
     int? PageNumber,
     double? Confidence,
     string DetectionSource,
-    bool? ReviewerApproved);
+    bool? ReviewerApproved,
+    string? ReviewerComments);
 
 public record DocumentReviewDto(
     Guid Id,
@@ -93,13 +95,23 @@ public record DocumentReviewDto(
     string OriginalContent,
     string? RedactedContent,
     IReadOnlyList<DocumentRedactionDto> Redactions,
-    string ReviewStatus);
+    string ReviewStatus,
+    bool IncludeInRelease);
 
 public record ApproveDocumentRequestDto(string? Comments);
 public record ApproveDocumentResponseDto(Guid Id, string ReviewStatus, DateTime ApprovedAt);
 
 public record RejectDocumentRequestDto(string Comments);
 public record RejectDocumentResponseDto(Guid Id, string ReviewStatus, DateTime RejectedAt);
+public record CreateRedactionRequestDto(
+    string PiiType,
+    string OriginalText,
+    string ReplacementText,
+    int? StartOffset,
+    int? EndOffset,
+    int? PageNumber);
+public record UpdateRedactionRequestDto(string ReplacementText, string? ReviewerComments);
+public record ReleaseSelectionRequestDto(bool IncludeInRelease);
 
 public record ApproveReleaseResponseDto(Guid Id, string Status, DateTime ApprovedAt);
 

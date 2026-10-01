@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { getDocuments } from "../api/client";
+import { getDocuments, setReleaseSelection } from "../api/client";
 import type { DocumentsList } from "../types";
 import StatusBadge from "../components/StatusBadge";
 
@@ -8,6 +8,23 @@ export default function ReviewListPage() {
     const { id } = useParams<{ id: string }>();
     const [data, setData] = useState<DocumentsList | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [busy, setBusy] = useState<string | null>(null);
+
+    async function toggleRelease(id: string, includeInRelease: boolean) {
+        setBusy(id);
+        try {
+            await setReleaseSelection(id, includeInRelease);
+            setData((current) => current && {
+                ...current,
+                documents: current.documents.map((d) =>
+                    d.id === id ? { ...d, includeInRelease } : d),
+            });
+        } catch (e) {
+            setError((e as Error).message);
+        } finally {
+            setBusy(null);
+        }
+    }
 
     useEffect(() => {
         if (!id) return;
@@ -72,6 +89,7 @@ export default function ReviewListPage() {
                                     <th className="px-4 py-3 font-medium">Redactions</th>
                                     <th className="px-4 py-3 font-medium">Redaction status</th>
                                     <th className="px-4 py-3 font-medium">Review status</th>
+                                    <th className="px-4 py-3 font-medium">Include in release</th>
                                     <th className="px-4 py-3" />
                                 </tr>
                             </thead>
@@ -95,6 +113,15 @@ export default function ReviewListPage() {
                                         </td>
                                         <td className="px-4 py-3">
                                             <StatusBadge status={d.reviewStatus} />
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <input
+                                                type="checkbox"
+                                                checked={d.includeInRelease}
+                                                disabled={busy === d.id}
+                                                onChange={(e) => toggleRelease(d.id, e.target.checked)}
+                                                aria-label={`Include ${d.fileName} in release`}
+                                            />
                                         </td>
                                         <td className="px-4 py-3 text-right">
                                             <Link

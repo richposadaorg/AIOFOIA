@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
     approveDocument,
+    addRedaction,
     deleteDocument,
     getDocumentReview,
+    removeRedaction,
     rejectDocument,
+    updateRedaction,
 } from "../api/client";
 import type { DocumentReview } from "../types";
 import StatusBadge from "../components/StatusBadge";
@@ -37,6 +40,7 @@ export default function DocumentReviewPage() {
     const [error, setError] = useState<string | null>(null);
     const [comments, setComments] = useState("");
     const [busy, setBusy] = useState(false);
+    const [newRedaction, setNewRedaction] = useState({ piiType: "Name", originalText: "", replacementText: "[REDACTED]" });
     const navigate = useNavigate();
 
     // Synchronized scrolling for the original/redacted panes.
@@ -107,6 +111,56 @@ export default function DocumentReviewPage() {
         try {
             await deleteDocument(documentId);
             navigate(`/requests/${id}/review`);
+        } catch (e) {
+            setError((e as Error).message);
+        } finally {
+            setBusy(false);
+        }
+
+    }
+
+    async function onAddRedaction() {
+        if (!documentId || !newRedaction.originalText.trim() || !newRedaction.replacementText.trim()) return;
+        setBusy(true);
+        try {
+            const added = await addRedaction(documentId, newRedaction);
+            setDoc((current) => current && { ...current, redactions: [...current.redactions, added] });
+            setNewRedaction({ ...newRedaction, originalText: "" });
+        } catch (e) {
+            setError((e as Error).message);
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function onEditRedaction(redactionId: string, currentReplacement: string) {
+        if (!documentId) return;
+        const replacementText = window.prompt("Replacement text", currentReplacement);
+        if (!replacementText?.trim()) return;
+        setBusy(true);
+        try {
+            await updateRedaction(documentId, redactionId, replacementText);
+            setDoc((current) => current && {
+                ...current,
+                redactions: current.redactions.map((r) =>
+                    r.id === redactionId ? { ...r, replacementText } : r),
+            });
+        } catch (e) {
+            setError((e as Error).message);
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function onRemoveRedaction(redactionId: string) {
+        if (!documentId || !window.confirm("Remove this redaction?")) return;
+        setBusy(true);
+        try {
+            await removeRedaction(documentId, redactionId);
+            setDoc((current) => current && {
+                ...current,
+                redactions: current.redactions.filter((r) => r.id !== redactionId),
+            });
         } catch (e) {
             setError((e as Error).message);
         } finally {
@@ -243,6 +297,7 @@ export default function DocumentReviewPage() {
                                     <th className="px-4 py-3 font-medium">Replacement</th>
                                     <th className="px-4 py-3 font-medium">Source</th>
                                     <th className="px-4 py-3 font-medium">Confidence</th>
+                                    <th className="px-4 py-3 font-medium">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-midnight-800 text-midnight-100">
@@ -267,12 +322,61 @@ export default function DocumentReviewPage() {
                                         <td className="px-4 py-3 text-midnight-300">
                                             {r.confidence?.toFixed(2) ?? "—"}
                                         </td>
+                                        <td className="space-x-2 px-4 py-3">
+                                            <button
+                                                onClick={() => onEditRedaction(r.id, r.replacementText)}
+                                                disabled={busy}
+                                                className="text-indigo-300 hover:text-indigo-200"
+                                            >
+                                                Edit
+                                            </button>
+                                            <button
+                                                onClick={() => onRemoveRedaction(r.id)}
+                                                disabled={busy}
+                                                className="text-rose-300 hover:text-rose-200"
+                                            >
+                                                Remove
+                                            </button>
+                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     </div>
                 )}
+            </section>
+
+            <section className="rounded-2xl border border-midnight-800 bg-midnight-900/60 p-6 shadow-card">
+                <h2 className="text-base font-semibold text-white">Add redaction</h2>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    <select
+                        value={newRedaction.piiType}
+                        onChange={(e) => setNewRedaction({ ...newRedaction, piiType: e.target.value })}
+                        className="rounded-md border border-midnight-700 bg-midnight-950/60 px-3 py-2 text-sm text-white"
+                    >
+                        {["Name", "Address", "Email", "Phone", "SSN", "DateOfBirth", "FinancialId"].map((type) =>
+                            <option key={type}>{type}</option>)}
+                    </select>
+                    <input
+                        value={newRedaction.originalText}
+                        onChange={(e) => setNewRedaction({ ...newRedaction, originalText: e.target.value })}
+                        placeholder="Text to redact"
+                        className="rounded-md border border-midnight-700 bg-midnight-950/60 px-3 py-2 text-sm text-white"
+                    />
+                    <input
+                        value={newRedaction.replacementText}
+                        onChange={(e) => setNewRedaction({ ...newRedaction, replacementText: e.target.value })}
+                        placeholder="Replacement"
+                        className="rounded-md border border-midnight-700 bg-midnight-950/60 px-3 py-2 text-sm text-white"
+                    />
+                </div>
+                <button
+                    onClick={onAddRedaction}
+                    disabled={busy || !newRedaction.originalText.trim()}
+                    className="mt-4 rounded-md bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400 disabled:opacity-60"
+                >
+                    Add redaction
+                </button>
             </section>
 
             {/* Decision */}
