@@ -74,7 +74,22 @@ builder.Services.AddSwaggerGen(o =>
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    static bool HasAppRole(System.Security.Claims.ClaimsPrincipal user, string role) =>
+        user.Claims.Any(claim =>
+            (claim.Type == "roles"
+             || claim.Type == "role"
+             || claim.Type == System.Security.Claims.ClaimTypes.Role)
+            && string.Equals(claim.Value, role, StringComparison.Ordinal));
+
+    options.AddPolicy("FoiaAdmin", policy =>
+        policy.RequireAuthenticatedUser()
+            .RequireAssertion(context => HasAppRole(context.User, "Foia.Admin")));
+    options.AddPolicy("FoiaAnalyst", policy =>
+        policy.RequireAuthenticatedUser()
+            .RequireAssertion(context => HasAppRole(context.User, "Foia.Analyst")));
+});
 
 var app = builder.Build();
 
