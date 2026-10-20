@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { deleteFoiaRequest, listFoiaRequestsPaged } from "../api/client";
+import { deleteFoiaRequest, getCurrentUser, listFoiaRequestsPaged } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
+import KnowledgeManagementPanel from "../components/KnowledgeManagementPanel";
 import type { FoiaRequestSummary } from "../types";
 
 const PAGE_SIZE = 10;
@@ -18,6 +19,8 @@ export default function AdminPage() {
     const [error, setError] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [authorizationChecked, setAuthorizationChecked] = useState(false);
 
     function load(targetPage: number) {
         setError(null);
@@ -33,7 +36,13 @@ export default function AdminPage() {
     }
 
     useEffect(() => {
-        load(0);
+        getCurrentUser()
+            .then((user) => {
+                setIsAdmin(user.capabilities.manageKnowledgeSources);
+                if (user.capabilities.manageKnowledgeSources) load(0);
+            })
+            .catch((e) => setError((e as Error).message))
+            .finally(() => setAuthorizationChecked(true));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -69,6 +78,14 @@ export default function AdminPage() {
 
     return (
         <div>
+            {authorizationChecked && !isAdmin && (
+                <div role="alert" className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                    Admin access is required to manage document sources and requests.
+                </div>
+            )}
+            {!authorizationChecked && (
+                <div aria-hidden="true" className="mb-6 h-12 animate-pulse rounded-lg bg-midnight-900/60" />
+            )}
             {error && (
                 <div
                     role="alert"
@@ -78,14 +95,16 @@ export default function AdminPage() {
                 </div>
             )}
 
-            {!items && !error && (
+            {isAdmin && <KnowledgeManagementPanel />}
+
+            {isAdmin && !items && !error && (
                 <div
                     aria-hidden="true"
                     className="h-64 animate-pulse rounded-2xl border border-midnight-800 bg-midnight-900/40"
                 />
             )}
 
-            {items && items.length === 0 && (
+            {isAdmin && items && items.length === 0 && (
                 <div className="rounded-2xl border border-midnight-800 bg-midnight-900/60 p-10 text-center">
                     <h2 className="text-lg font-medium text-white">No requests</h2>
                     <p className="mt-2 text-sm text-midnight-300">
@@ -94,7 +113,7 @@ export default function AdminPage() {
                 </div>
             )}
 
-            {items && items.length > 0 && (
+            {isAdmin && items && items.length > 0 && (
                 <div className="overflow-hidden rounded-2xl border border-midnight-800 bg-midnight-900/60 shadow-card">
                     <div className="overflow-x-auto">
                         <table className="min-w-full divide-y divide-midnight-800 text-sm">

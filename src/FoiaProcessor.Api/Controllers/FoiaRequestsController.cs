@@ -93,6 +93,7 @@ public class FoiaRequestsController : ControllerBase
     }
 
     [HttpGet("paged")]
+    [Authorize(Policy = "FoiaAdmin")]
     public async Task<IActionResult> ListPaged(
         [FromQuery] int skip,
         [FromQuery] int take,
@@ -119,6 +120,7 @@ public class FoiaRequestsController : ControllerBase
     }
 
     [HttpGet("pending-review")]
+    [Authorize(Policy = "FoiaAnalyst")]
     public async Task<IActionResult> ListPendingReview(CancellationToken ct)
     {
         var summaries = await _db.FoiaRequests
@@ -171,8 +173,11 @@ public class FoiaRequestsController : ControllerBase
             DocumentsApproved: request.Documents.Count(d => d.ReviewStatus == ReviewStatus.Approved),
             DocumentsRejected: request.Documents.Count(d => d.ReviewStatus == ReviewStatus.ManualHandling));
 
+        var canAccessDocuments = User.Claims.Any(claim =>
+            (claim.Type == "roles" || claim.Type == "role" || claim.Type == System.Security.Claims.ClaimTypes.Role)
+            && string.Equals(claim.Value, "Foia.Analyst", StringComparison.Ordinal));
         var release = request.ReleasePackage is { } pkg
-            ? new ReleaseDto("Ready", pkg.SasUrl, pkg.SasExpiresAt)
+            ? new ReleaseDto("Ready", canAccessDocuments ? pkg.SasUrl : null, pkg.SasExpiresAt)
             : new ReleaseDto("NotReady", null, null);
 
         var dto = new FoiaRequestStatusDto(
@@ -197,6 +202,7 @@ public class FoiaRequestsController : ControllerBase
     }
 
     [HttpGet("{id:guid}/documents")]
+    [Authorize(Policy = "FoiaAnalyst")]
     public async Task<IActionResult> ListDocuments(Guid id, CancellationToken ct)
     {
         var exists = await _db.FoiaRequests.AnyAsync(r => r.Id == id, ct);
@@ -219,6 +225,7 @@ public class FoiaRequestsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/approve-release")]
+    [Authorize(Policy = "FoiaAnalyst")]
     public async Task<IActionResult> ApproveRelease(Guid id, CancellationToken ct)
     {
         var request = await _db.FoiaRequests
@@ -256,6 +263,7 @@ public class FoiaRequestsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Policy = "FoiaAdmin")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var request = await _db.FoiaRequests
@@ -295,6 +303,7 @@ public class FoiaRequestsController : ControllerBase
     }
 
     [HttpGet("{id:guid}/release")]
+    [Authorize(Policy = "FoiaAnalyst")]
     public async Task<IActionResult> GetRelease(Guid id, CancellationToken ct)
     {
         var pkg = await _db.ReleasePackages

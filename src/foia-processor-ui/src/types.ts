@@ -141,3 +141,51 @@ export type ReleasePackage = {
     sasExpiresAt?: string;
     createdAt?: string;
 };
+
+export type CurrentUser = {
+    roles: string[];
+    capabilities: {
+        manageKnowledgeSources: boolean;
+        discoverDocuments: boolean;
+    };
+};
+
+export type KnowledgeSourceType = {
+    kind: string;
+    displayName: string;
+    preview: boolean;
+    availability: string;
+};
+
+export type KnowledgeSource = {
+    id: string;
+    kind: string;
+    name: string;
+    description: string;
+    state: "Draft" | "Disabled" | "Retired";
+    capabilityState: string;
+    revision: number;
+    createdAt: string;
+    updatedAt: string;
+};
+
+export type KnowledgeProfile = {
+    id: string;
+    name: string;
+    description: string;
+    state: "Draft" | "Disabled" | "Retired";
+    revision: number;
+    createdAt: string;
+};
+
+export type KnowledgeOperation = {
+    id: string;
+    resourceId: string;
+    resourceType: string;
+    operationType: string;
+    status: string;
+    errorCode: string | null;
+    traceId: string | null;
+    createdAt: string;
+    updatedAt: string;
+};

@@ -1,6 +1,8 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useMsal } from "@azure/msal-react";
+import { useEffect, useState } from "react";
 import logoUrl from "../assets/images/aiofoia-logo.png";
+import { getCurrentUser } from "../api/client";
 
 const linkBase =
     "px-3 py-2 rounded-md text-sm font-medium transition-colors";
@@ -14,6 +16,13 @@ function navClass({ isActive }: { isActive: boolean }) {
 export default function AppLayout() {
     const { instance, accounts } = useMsal();
     const account = accounts[0];
+    const [canAdminister, setCanAdminister] = useState(false);
+
+    useEffect(() => {
+        getCurrentUser()
+            .then((user) => setCanAdminister(user.capabilities.manageKnowledgeSources))
+            .catch(() => setCanAdminister(false));
+    }, []);
 
     const handleSignOut = () => {
         instance.logoutRedirect({ postLogoutRedirectUri: window.location.origin });
@@ -43,9 +52,7 @@ export default function AppLayout() {
                         <NavLink to="/submit" className={navClass}>
                             Submit New Request
                         </NavLink>
-                        <NavLink to="/admin" className={navClass}>
-                            Admin
-                        </NavLink>
+                        {canAdminister && <NavLink to="/admin" className={navClass}>Admin</NavLink>}
                         <NavLink to="/system-health" className={navClass}>
                             System Health
                         </NavLink>

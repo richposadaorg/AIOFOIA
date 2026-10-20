@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore;
 namespace FoiaProcessor.Api.Controllers;
 
 [ApiController]
-[Authorize]
+[Authorize(Policy = "FoiaAnalyst")]
 [Route("api/documents")]
 public class DocumentsController : ControllerBase
 {

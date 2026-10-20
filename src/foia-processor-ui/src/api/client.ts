@@ -1,6 +1,7 @@
 import type {
     DocumentReview,
     DocumentsList,
+    CurrentUser,
     FoiaRequestStatus,
     FoiaRequestSummary,
     PagedFoiaRequests,
@@ -9,6 +10,10 @@ import type {
     SubmitFoiaResponse,
     SystemHealthReport,
     ValidationProblem,
+    KnowledgeSource,
+    KnowledgeSourceType,
+    KnowledgeProfile,
+    KnowledgeOperation,
 } from "../types";
 import { getAccessToken } from "../auth/msalConfig";
 
@@ -129,3 +134,36 @@ export const getRelease = (id: string) =>
 
 export const getSystemHealth = () =>
     request<SystemHealthReport>(`/api/health/detailed`);
+
+export const getCurrentUser = () =>
+    request<CurrentUser>("/api/me");
+
+export const listKnowledgeSourceTypes = () =>
+    request<KnowledgeSourceType[]>("/api/admin/knowledge-source-types");
+
+export const listKnowledgeSources = () =>
+    request<KnowledgeSource[]>("/api/admin/knowledge-sources");
+
+export const createKnowledgeSource = (input: { kind: string; name: string; description: string }) =>
+    request<KnowledgeSource>("/api/admin/knowledge-sources", {
+        method: "POST",
+        body: JSON.stringify(input),
+    });
+
+export const deleteKnowledgeSourceDraft = (id: string) =>
+    request<void>(`/api/admin/knowledge-sources/${id}`, { method: "DELETE" });
+
+export const activateKnowledgeSource = (id: string) =>
+    request<void>(`/api/admin/knowledge-sources/${id}/activate`, { method: "POST" });
+
+export const listKnowledgeProfiles = () =>
+    request<KnowledgeProfile[]>("/api/admin/knowledge-profiles");
+
+export const createKnowledgeProfile = (input: { name: string; description: string }) =>
+    request<KnowledgeProfile>("/api/admin/knowledge-profiles", {
+        method: "POST",
+        body: JSON.stringify(input),
+    });
+
+export const listKnowledgeOperations = () =>
+    request<KnowledgeOperation[]>("/api/admin/knowledge-operations?take=20");

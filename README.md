@@ -70,8 +70,12 @@ SearchServer, RedactionServer, ReviewServer, BlobStorageServer), exposed to the 
 
 The SPA and API are protected by a single Entra ID app registration. Sign-in uses MSAL.js (PKCE
 auth-code flow) in the browser; the API validates JWT bearer tokens with
-`Microsoft.Identity.Web`. There is no role-based authorization — any signed-in user in the
-configured tenant can use the app.
+`Microsoft.Identity.Web`. The API requires the `Foia.Admin` app role for source/profile
+administration, paged request administration, and request deletion. The `Foia.Analyst` app role is
+required for document-content, review, and release endpoints; `Foia.Admin` alone does not grant
+document access. Assign roles to approved users or groups outside the app; the app never grants
+roles automatically. Case-level assignments and source-specific permission checks are not yet
+implemented, so this role gate is not a production access-control boundary.
 
 ### One-time setup
 
@@ -84,7 +88,20 @@ configured tenant can use the app.
 2. **Expose an API:** under **Expose an API** click **Add a scope**, accept the proposed
    `api://{clientId}` URI, then add a scope named `access_as_user` (admin and user consent
    enabled). The full scope value the SPA requests is `api://{clientId}/access_as_user`.
-3. **Capture IDs:** copy the **Application (client) ID** and **Directory (tenant) ID**.
+3. **Add app roles** to the API registration:
+   - `Foia.Admin` — administrators managing source/profile drafts and FOIA request administration.
+   - `Foia.Analyst` — required for existing document review and release endpoints; case-level
+     discovery/import authorization is not yet implemented.
+   Set both roles to allow assignment to users and groups, then assign only approved staff.
+4. **Capture IDs:** copy the **Application (client) ID** and **Directory (tenant) ID**.
+
+### Foundry IQ management status
+
+The Admin page currently stores metadata-only source and knowledge-base drafts. All 12 documented
+source kinds appear in the catalog, but their connectors, retrieval, provisioning, import, and
+case-level authorization are not implemented or verified. Drafts remain unavailable and source
+activation returns `409`; do not enter credentials or sensitive source information. This catalog
+is not evidence that any connector is supported in a deployment.
 
 ### Local development
 
@@ -104,4 +121,3 @@ These flow through the deploy workflow into Bicep parameters and end up as
 `AzureAd__TenantId` / `AzureAd__ClientId` environment variables on the Container App. Leave
 them unset to deploy with auth disabled (the API will then return 401 on every request to an
 `[Authorize]` controller).
-

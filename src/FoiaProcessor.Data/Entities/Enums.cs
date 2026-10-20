@@ -82,3 +82,37 @@ public enum AuditEventType
     SasUrlGenerated,
     Error,
 }
+
+public enum KnowledgeSourceKind
+{
+    SearchIndex,
+    AzureBlob,
+    AzureSql,
+    FileUpload,
+    OneLake,
+    IndexedSharePoint,
+    RemoteSharePoint,
+    FabricDataAgent,
+    FabricOntology,
+    McpServer,
+    WorkIq,
+    Web,
+}
+
+public enum KnowledgeResourceState
+{
+    Draft,
+    Disabled,
+    Retired,
+}
+
+public enum KnowledgeCapabilityState
+{
+    Unavailable,
+    Unverified,
+    MissingPrerequisite,
+    PreviewNotApproved,
+    Disabled,
+    Ready,
+    Degraded,
+}
