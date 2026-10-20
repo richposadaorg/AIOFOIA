@@ -44,7 +44,7 @@ Any non-terminal state → Error  (with reason recorded in AuditEvent)
 
 Terminal states: `NoDocumentsFound`, `ReleasePackageReady`, `Rejected`, `Error`.
 
-**Relationships**: 1..* `Document`, 0..* `ReviewTask`, 0..1 `ReleasePackage`, 0..* `AuditEvent`.
+**Relationships**: 1..* `Document`, 0..* `ReviewTask`, 0..* `ReleasePackage`, 0..* `AuditEvent`.
 
 ---
 
@@ -62,6 +62,7 @@ Terminal states: `NoDocumentsFound`, `ReleasePackageReady`, `Rejected`, `Error`.
 | RedactedContent | text | populated after redaction |
 | RedactionStatus | string (enum) | see RedactionStatus |
 | ReviewStatus | string (enum) | see ReviewStatus |
+| IncludeInRelease | bool | analyst-controlled inclusion decision |
 | RetrievedAt | DateTime (UTC) | |
 
 **RedactionStatus**: `NotStarted`, `InProgress`, `Completed`, `Failed`.
@@ -70,8 +71,9 @@ terminal state for any document the reviewer rejects — the spec uses the word 
 the reviewer's action, but the persisted document state is `ManualHandling`. There is no separate
 `Rejected` document state for the PoC.)
 
-**Relationships**: 0..* `Redaction`. Documents in `ReviewStatus = Approved` are eligible for
-inclusion in the `ReleasePackage`. Documents in `ManualHandling` are excluded.
+**Relationships**: 0..* `Redaction`. Only documents with `RedactionStatus = Completed` and
+`ReviewStatus = Approved` may be included in a release. Other documents may be explicitly excluded
+from a package while remaining under review or in manual handling.
 
 ---
 
@@ -124,12 +126,18 @@ state lives on `Document.ReviewStatus`; the `ReviewTask` tracks the overarching 
 | Field | Type | Notes |
 |---|---|---|
 | Id | Guid (PK) | |
-| FoiaRequestId | Guid (FK → FoiaRequest.Id, unique) | one package per request |
+| FoiaRequestId | Guid (FK → FoiaRequest.Id) | |
+| Version | int | unique within a FOIA request; later curated packages create new versions |
 | ZipBlobName | string(300) | `foia-request-{requestId}-release-package.zip` |
 | BlobContainerName | string(100) | from configuration |
 | SasUrl | string(2000) | full URL with SAS token |
 | SasExpiresAt | DateTime (UTC) | now + `SasExpirationDays` (default 7) |
 | CreatedAt | DateTime (UTC) | |
+
+**Relationships**: 1..* `ReleasePackageDocument` composition snapshots. Each row captures a source
+document ID, source filename, archive filename, included/excluded decision, and (for included
+documents) SHA-256 of the PDF bytes added to that package. These snapshot rows do not depend on the
+live document row.
 
 ---
 
@@ -170,7 +178,7 @@ Multiple violations are returned in a single response (do not short-circuit).
 - `FoiaRequest.Status` — supports the status-list view if added later.
 - `Document.FoiaRequestId` — supports per-request document listing.
 - `AuditEvent.FoiaRequestId, Timestamp` — supports the chronological audit timeline (FR-030).
-- `ReleasePackage.FoiaRequestId` (unique) — enforces 0..1 cardinality.
+- `(ReleasePackage.FoiaRequestId, ReleasePackage.Version)` (unique) — versions are ordered per request.
 
 ---
 

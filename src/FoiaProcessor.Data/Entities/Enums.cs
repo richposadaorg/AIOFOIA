@@ -78,6 +78,7 @@ public enum AuditEventType
     RedactionRemoved,
     DocumentReleaseSelectionChanged,
     ReleaseApproved,
+    ReleaseCompositionCreated,
     PackageCreated,
     SasUrlGenerated,
     Error,

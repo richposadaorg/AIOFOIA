@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { approveRelease, getFoiaRequestStatus } from "../api/client";
-import type { FoiaRequestStatus } from "../types";
+import { approveRelease, getFoiaRequestStatus, getReleasePackages } from "../api/client";
+import type { FoiaRequestStatus, ReleasePackage } from "../types";
 import StatusBadge from "../components/StatusBadge";
 
 const TERMINAL_STATUSES = new Set([
@@ -45,6 +45,7 @@ function formatDateOnly(value: string | null | undefined) {
 export default function RequestDetailsPage() {
     const { id } = useParams<{ id: string }>();
     const [status, setStatus] = useState<FoiaRequestStatus | null>(null);
+    const [releasePackages, setReleasePackages] = useState<ReleasePackage[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [copied, setCopied] = useState(false);
@@ -59,6 +60,9 @@ export default function RequestDetailsPage() {
                 const data = await getFoiaRequestStatus(id!);
                 if (cancelled) return;
                 setStatus(data);
+                if (data.release.status === "Ready") {
+                    setReleasePackages(await getReleasePackages(id!));
+                }
                 setError(null);
                 if (
                     !TERMINAL_STATUSES.has(data.status) ||
@@ -124,13 +128,10 @@ export default function RequestDetailsPage() {
         );
     }
 
-    const allApproved =
-        status.counts.documentsFound > 0 &&
-        status.counts.documentsApproved + status.counts.documentsRejected ===
-            status.counts.documentsFound &&
-        status.counts.documentsApproved > 0;
     const canApproveRelease =
-        status.status === "PendingHumanReview" && allApproved;
+        (status.status === "PendingHumanReview" || status.status === "ReleasePackageReady") &&
+        status.counts.documentsIncludedInRelease > 0 &&
+        status.counts.documentsIncludedNotReady === 0;
 
     const sasExpired =
         status.release.status === "Ready" &&
@@ -168,12 +169,12 @@ export default function RequestDetailsPage() {
                 </div>
 
                 <div className="mt-6 flex flex-wrap gap-3">
-                    {status.status === "PendingHumanReview" ? (
+                    {status.status === "PendingHumanReview" || status.status === "ReleasePackageReady" ? (
                         <Link
                             to={`/requests/${status.id}/review`}
                             className="inline-flex items-center rounded-md bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400"
                         >
-                            Review Documents &rarr;
+                            {status.status === "ReleasePackageReady" ? "Curate package documents" : "Review Documents"} &rarr;
                         </Link>
                     ) : (
                         status.counts.documentsFound > 0 && (
@@ -191,7 +192,7 @@ export default function RequestDetailsPage() {
                             disabled={busy}
                             className="inline-flex items-center rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-400 disabled:opacity-60"
                         >
-                            {busy ? "Working…" : "Approve Release"}
+                            {busy ? "Working…" : status.release.status === "Ready" ? "Create Package Variant" : "Approve Release"}
                         </button>
                     )}
                 </div>
@@ -314,7 +315,7 @@ export default function RequestDetailsPage() {
             {status.release.status === "Ready" && status.release.sasUrl && (
                 <section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6 shadow-card">
                     <h2 className="text-base font-semibold text-white">
-                        Release package
+                        Release package {status.release.packageVersion ? `v${status.release.packageVersion}` : ""}
                     </h2>
                     {!sasExpired ? (
                         <div className="mt-4 space-y-3 text-sm">
@@ -352,6 +353,54 @@ export default function RequestDetailsPage() {
                             package.
                         </p>
                     )}
+                </section>
+            )}
+
+            {releasePackages.length > 0 && (
+                <section className="rounded-2xl border border-midnight-800 bg-midnight-900/60 p-6 shadow-card">
+                    <h2 className="text-base font-semibold text-white">Package history</h2>
+                    <ol className="mt-4 space-y-4">
+                        {releasePackages.map((pkg) => (
+                            <li key={pkg.version} className="rounded-xl border border-midnight-800 bg-midnight-950/40 p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <p className="font-medium text-white">Version {pkg.version}</p>
+                                        <p className="mt-1 text-xs text-midnight-400">
+                                            Created {formatDate(pkg.createdAt)} · {pkg.documents.filter((d) => d.included).length} included · {pkg.documents.filter((d) => !d.included).length} excluded
+                                        </p>
+                                    </div>
+                                    {pkg.sasUrl && (
+                                        <a
+                                            href={pkg.sasUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-sm font-medium text-indigo-300 hover:text-indigo-200"
+                                        >
+                                            Download v{pkg.version}
+                                        </a>
+                                    )}
+                                </div>
+                                <details className="mt-3 text-sm">
+                                    <summary className="cursor-pointer text-midnight-300">View composition snapshot</summary>
+                                    <ul className="mt-2 space-y-1">
+                                        {pkg.documents.map((document) => (
+                                            <li key={document.documentId} className="flex flex-wrap justify-between gap-2 text-midnight-300">
+                                                <span>
+                                                    {document.included ? "Included" : "Excluded"}: {document.fileName}
+                                                    {document.packageFileName && document.packageFileName !== document.fileName && ` → ${document.packageFileName}`}
+                                                </span>
+                                                {document.contentSha256 && (
+                                                    <code className="break-all text-xs text-midnight-400" title="SHA-256 of packaged PDF">
+                                                        SHA-256 {document.contentSha256}
+                                                    </code>
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </details>
+                            </li>
+                        ))}
+                    </ol>
                 </section>
             )}
 

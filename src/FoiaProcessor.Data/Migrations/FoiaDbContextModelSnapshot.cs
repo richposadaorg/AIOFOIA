@@ -64,6 +64,10 @@ namespace FoiaProcessor.Data.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
 
+                    b.Property<string>("PackageFileName")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
                     b.Property<string>("FileType")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -244,6 +248,9 @@ namespace FoiaProcessor.Data.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
+
                     b.Property<string>("ZipBlobName")
                         .IsRequired()
                         .HasMaxLength(300)
@@ -251,10 +258,41 @@ namespace FoiaProcessor.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("FoiaRequestId")
+                    b.HasIndex("FoiaRequestId", "Version")
                         .IsUnique();
 
                     b.ToTable("ReleasePackages");
+                });
+
+            modelBuilder.Entity("FoiaProcessor.Data.Entities.ReleasePackageDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContentSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<bool>("Included")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("ReleasePackageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReleasePackageId");
+
+                    b.ToTable("ReleasePackageDocuments");
                 });
 
             modelBuilder.Entity("FoiaProcessor.Data.Entities.ReviewTask", b =>
@@ -331,12 +369,23 @@ namespace FoiaProcessor.Data.Migrations
             modelBuilder.Entity("FoiaProcessor.Data.Entities.ReleasePackage", b =>
                 {
                     b.HasOne("FoiaProcessor.Data.Entities.FoiaRequest", "FoiaRequest")
-                        .WithOne("ReleasePackage")
+                        .WithMany("ReleasePackages")
                         .HasForeignKey("FoiaProcessor.Data.Entities.ReleasePackage", "FoiaRequestId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("FoiaRequest");
+                });
+
+            modelBuilder.Entity("FoiaProcessor.Data.Entities.ReleasePackageDocument", b =>
+                {
+                    b.HasOne("FoiaProcessor.Data.Entities.ReleasePackage", "ReleasePackage")
+                        .WithMany("Documents")
+                        .HasForeignKey("ReleasePackageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ReleasePackage");
                 });
 
             modelBuilder.Entity("FoiaProcessor.Data.Entities.ReviewTask", b =>
@@ -361,7 +410,7 @@ namespace FoiaProcessor.Data.Migrations
 
                     b.Navigation("Documents");
 
-                    b.Navigation("ReleasePackage");
+                    b.Navigation("ReleasePackages");
 
                     b.Navigation("ReviewTasks");
                 });

@@ -161,18 +161,37 @@ public class CaseServer
 
     public virtual async Task<CaseSaveReleasePackageOutput> CaseSaveReleasePackageAsync(CaseSaveReleasePackageInput input, CancellationToken ct = default)
     {
+        var currentVersion = await _db.ReleasePackages
+            .Where(p => p.FoiaRequestId == input.CaseId)
+            .Select(p => (int?)p.Version)
+            .MaxAsync(ct) ?? 0;
         var pkg = new ReleasePackage
         {
             FoiaRequestId = input.CaseId,
+            Version = currentVersion + 1,
             ZipBlobName = input.ZipBlobName,
             BlobContainerName = input.BlobContainerName,
             SasUrl = input.SasUrl,
             SasExpiresAt = input.SasExpiresAt,
             CreatedAt = DateTime.UtcNow,
+            Documents = input.Documents.Select(d => new ReleasePackageDocument
+            {
+                DocumentId = d.DocumentId,
+                FileName = d.FileName,
+                PackageFileName = d.PackageFileName,
+                Included = d.Included,
+                ContentSha256 = d.ContentSha256,
+            }).ToList(),
         };
         _db.ReleasePackages.Add(pkg);
         await _db.SaveChangesAsync(ct);
-        await _audit.RecordAsync(input.CaseId, AuditEventType.SasUrlGenerated, "Release package created.", ct: ct);
+        var includedCount = input.Documents.Count(d => d.Included);
+        var excludedCount = input.Documents.Count - includedCount;
+        await _audit.RecordAsync(input.CaseId, AuditEventType.ReleaseCompositionCreated,
+            $"Release package version {pkg.Version} created with {includedCount} included and {excludedCount} excluded document(s).",
+            ct: ct);
+        await _audit.RecordAsync(input.CaseId, AuditEventType.SasUrlGenerated,
+            $"Release package version {pkg.Version} created.", ct: ct);
         return new CaseSaveReleasePackageOutput(pkg.Id);
     }
 

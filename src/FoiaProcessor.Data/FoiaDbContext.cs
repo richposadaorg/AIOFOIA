@@ -42,9 +42,15 @@ public class FoiaDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<FoiaRequest>()
-            .HasOne(r => r.ReleasePackage)
+            .HasMany(r => r.ReleasePackages)
             .WithOne(p => p.FoiaRequest!)
-            .HasForeignKey<ReleasePackage>(p => p.FoiaRequestId)
+            .HasForeignKey(p => p.FoiaRequestId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ReleasePackage>()
+            .HasMany(p => p.Documents)
+            .WithOne(d => d.ReleasePackage!)
+            .HasForeignKey(d => d.ReleasePackageId)
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<FoiaRequest>()
@@ -63,7 +69,7 @@ public class FoiaDbContext : DbContext
         modelBuilder.Entity<FoiaRequest>().HasIndex(r => r.Status);
         modelBuilder.Entity<Document>().HasIndex(d => d.FoiaRequestId);
         modelBuilder.Entity<AuditEvent>().HasIndex(a => new { a.FoiaRequestId, a.Timestamp });
-        modelBuilder.Entity<ReleasePackage>().HasIndex(p => p.FoiaRequestId).IsUnique();
+        modelBuilder.Entity<ReleasePackage>().HasIndex(p => new { p.FoiaRequestId, p.Version }).IsUnique();
 
         // -------- string lengths (per data-model.md) --------
         modelBuilder.Entity<FoiaRequest>().Property(e => e.Subject).HasMaxLength(200).IsRequired();
@@ -89,6 +95,10 @@ public class FoiaDbContext : DbContext
         modelBuilder.Entity<ReleasePackage>().Property(e => e.ZipBlobName).HasMaxLength(300);
         modelBuilder.Entity<ReleasePackage>().Property(e => e.BlobContainerName).HasMaxLength(100);
         modelBuilder.Entity<ReleasePackage>().Property(e => e.SasUrl).HasMaxLength(2000);
+
+        modelBuilder.Entity<ReleasePackageDocument>().Property(e => e.FileName).HasMaxLength(300);
+        modelBuilder.Entity<ReleasePackageDocument>().Property(e => e.PackageFileName).HasMaxLength(300);
+        modelBuilder.Entity<ReleasePackageDocument>().Property(e => e.ContentSha256).HasMaxLength(64);
 
         modelBuilder.Entity<AuditEvent>().Property(e => e.Message).HasMaxLength(1000);
     }

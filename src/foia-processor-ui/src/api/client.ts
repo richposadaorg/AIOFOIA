@@ -127,5 +127,8 @@ export const approveRelease = (id: string) =>
 export const getRelease = (id: string) =>
     request<ReleasePackage>(`/api/foiarequests/${id}/release`);
 
+export const getReleasePackages = (id: string) =>
+    request<ReleasePackage[]>(`/api/foiarequests/${id}/release-packages`);
+
 export const getSystemHealth = () =>
     request<SystemHealthReport>(`/api/health/detailed`);

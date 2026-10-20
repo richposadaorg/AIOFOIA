@@ -96,12 +96,15 @@ common error shape on failure.
     "documentsFound": 7,
     "documentsPendingReview": 5,
     "documentsApproved": 2,
-    "documentsRejected": 0
+    "documentsRejected": 0,
+    "documentsIncludedInRelease": 2,
+    "documentsIncludedNotReady": 0
   },
   "release": {
     "status": "NotReady",
     "sasUrl": null,
-    "sasExpiresAt": null
+    "sasExpiresAt": null,
+    "packageVersion": null
   },
   "auditEvents": [
     { "timestamp": "2026-04-28T14:05:00Z", "eventType": "RequestSubmitted", "message": "Request created.", "relatedDocumentId": null },
@@ -130,7 +133,8 @@ common error shape on failure.
       "fileType": "txt",
       "redactionStatus": "Completed",
       "reviewStatus": "Pending",
-      "redactionCount": 4
+      "redactionCount": 4,
+      "includeInRelease": true
     }
   ]
 }
@@ -229,9 +233,12 @@ excluded from the release package").
 { "id": "8a4e5b1c-...", "status": "ApprovedForRelease", "approvedAt": "2026-04-28T14:15:00Z" }
 ```
 
-**Errors**: `409` if any document is not `Approved`; `404` if request unknown.
+**Errors**: `409` if no documents are selected, or any selected document is not redacted and
+`Approved`;
+excluded documents may remain unapproved. `404` if request unknown.
 
-**Side effect**: workflow resumes — Packaging & Release agent runs.
+**Side effect**: workflow resumes — Packaging & Release agent creates the next package version.
+Calling this endpoint after a package is ready creates a curated variant from the current selection.
 
 ---
 
@@ -249,9 +256,18 @@ excluded from the release package").
   "blobContainerName": "foia-releases",
   "sasUrl": "https://demoacct.blob.core.windows.net/foia-releases/foia-request-...-release-package.zip?sv=...",
   "sasExpiresAt": "2026-05-05T14:16:00Z",
-  "createdAt": "2026-04-28T14:16:00Z"
+  "createdAt": "2026-04-28T14:16:00Z",
+  "version": 1,
+  "documents": [
+    { "documentId": "doc-guid-1", "fileName": "memo-2024-03.txt", "packageFileName": "memo-2024-03.pdf", "included": true, "contentSha256": "..." },
+    { "documentId": "doc-guid-2", "fileName": "notes.txt", "packageFileName": null, "included": false, "contentSha256": null }
+  ]
 }
 ```
+
+`GET /api/foiarequests/{id}/release-packages` lists all package versions with their immutable
+composition snapshots. Included documents have a SHA-256 of their packaged PDF; excluded documents
+have a null hash.
 
 **Response `200 OK` (not yet ready)**:
 

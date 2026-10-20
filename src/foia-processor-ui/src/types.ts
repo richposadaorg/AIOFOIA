@@ -23,12 +23,15 @@ export type Counts = {
     documentsPendingReview: number;
     documentsApproved: number;
     documentsRejected: number;
+    documentsIncludedInRelease: number;
+    documentsIncludedNotReady: number;
 };
 
 export type Release = {
     status: "NotReady" | "Ready";
     sasUrl: string | null;
     sasExpiresAt: string | null;
+    packageVersion: number | null;
 };
 
 export type AuditEvent = {
@@ -135,9 +138,19 @@ export type DocumentReview = {
 export type ReleasePackage = {
     requestId: string;
     status: "NotReady" | "Ready";
-    zipBlobName?: string;
-    blobContainerName?: string;
-    sasUrl?: string;
-    sasExpiresAt?: string;
-    createdAt?: string;
+    zipBlobName: string | null;
+    blobContainerName: string | null;
+    sasUrl: string | null;
+    sasExpiresAt: string | null;
+    createdAt: string | null;
+    version: number | null;
+    documents: ReleasePackageDocument[];
+};
+
+export type ReleasePackageDocument = {
+    documentId: string;
+    fileName: string;
+    packageFileName: string | null;
+    included: boolean;
+    contentSha256: string | null;
 };

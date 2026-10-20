@@ -31,7 +31,7 @@ flowchart TD
     A2 -->|No documents| Y([Status: NoDocumentsFound])
     A3 --> A4[**4. Human Review Coordinator**<br/>opens a review task if needed<br/>tools: GetReviewStatus,<br/>CreateReviewTask, Acknowledge]
     A4 --> H{{Analyst reviews each<br/>document in the SPA<br/>Approve / Reject / Edit}}
-    H -->|All approved| A5[**5. Packaging & Release Agent**<br/>build ZIP → upload to Blob →<br/>generate SAS → save package<br/>tools: BuildZip, UploadZip,<br/>GenerateSasUrl, SavePackage]
+    H -->|Analyst selects approved documents| A5[**5. Packaging & Release Agent**<br/>snapshot included/excluded decisions →<br/>build ZIP → upload to Blob → SAS]
     A5 --> R([Status: ReleasePackageReady<br/>Requestor downloads ZIP via SAS URL])
 ```
 
@@ -54,12 +54,15 @@ flowchart TD
 
 4. **Human Review Coordinator.** Decides whether a review task is needed. If documents are
    pending, it calls `CreateReviewTask`; otherwise `Acknowledge`. The workflow then **pauses**
-   while a FOIA analyst opens the SPA, reviews each document, and approves or rejects it.
+   while a FOIA analyst opens the SPA, reviews each document, approves or rejects it, and selects
+   which redacted and approved documents belong in the release. Documents excluded from release may
+   remain in review or manual handling.
 
-5. **Packaging & Release Agent.** Once all documents are approved, the workflow resumes.
-   The agent calls `BuildZip` → `UploadZip` (to Azure Blob Storage) → `GenerateSasUrl`
-   (time-limited) → `SavePackage`. The request reaches `ReleasePackageReady` and the
-   requestor can download the ZIP via the SAS URL.
+5. **Packaging & Release Agent.** Once every selected document is redacted and approved, the workflow resumes.
+   Each package version records an immutable included/excluded document snapshot; included PDFs
+   also have SHA-256 hashes. The agent builds the ZIP from only selected documents, uploads it to
+   Blob Storage, generates a time-limited SAS URL, and saves the version. Analysts can curate the
+   selection and create later package variants; prior snapshots and download links remain available.
 
 All side effects — DB writes, Azure AI Search calls, Azure OpenAI calls, Blob Storage I/O —
 are reached **only through the MCP-shaped servers** in `FoiaProcessor.McpTools` (CaseServer,
@@ -104,4 +107,3 @@ These flow through the deploy workflow into Bicep parameters and end up as
 `AzureAd__TenantId` / `AzureAd__ClientId` environment variables on the Container App. Leave
 them unset to deploy with auth disabled (the API will then return 401 on every request to an
 `[Authorize]` controller).
-

@@ -17,6 +17,6 @@ public class FoiaRequest
 
     public List<Document> Documents { get; set; } = new();
     public List<ReviewTask> ReviewTasks { get; set; } = new();
-    public ReleasePackage? ReleasePackage { get; set; }
+    public List<ReleasePackage> ReleasePackages { get; set; } = new();
     public List<AuditEvent> AuditEvents { get; set; } = new();
 }
