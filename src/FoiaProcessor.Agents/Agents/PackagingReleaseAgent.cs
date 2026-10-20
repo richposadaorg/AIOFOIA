@@ -50,23 +50,49 @@ public class PackagingReleaseAgent
         // 1. Build the zip from approved redacted documents, rendering each as a PDF first.
         var docs = await _db.Documents
             .AsNoTracking()
-            .Where(d => d.FoiaRequestId == requestId
-                && d.ReviewStatus == ReviewStatus.Approved
-                && d.IncludeInRelease)
-            .Select(d => new { d.FileName, Content = d.RedactedContent ?? d.OriginalContent })
+            .Where(d => d.FoiaRequestId == requestId)
+            .Select(d => new
+            {
+                d.Id,
+                d.FileName,
+                d.RedactedContent,
+                d.RedactionStatus,
+                d.ReviewStatus,
+                d.IncludeInRelease,
+            })
+            .OrderBy(d => d.FileName)
+            .ThenBy(d => d.Id)
             .ToListAsync(ct);
 
-        var entries = docs
-            .Select(d => new ZipFileEntryBinary(
-                Path.ChangeExtension(d.FileName, ".pdf"),
-                PdfRenderer.Render(d.FileName, d.Content)))
+        var selectedDocs = docs.Where(d => d.IncludeInRelease).ToList();
+        if (selectedDocs.Count == 0 || selectedDocs.Any(d =>
+                d.ReviewStatus != ReviewStatus.Approved
+                || d.RedactionStatus != RedactionStatus.Completed
+                || d.RedactedContent is null))
+        {
+            throw new InvalidOperationException(
+                "A release package requires at least one selected document, and every selected document must be redacted and approved.");
+        }
+
+        var pdfs = selectedDocs.ToDictionary(
+            d => d.Id,
+            d => PdfRenderer.Render(d.FileName, d.RedactedContent!));
+        var entryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var packageFileNames = new Dictionary<Guid, string>();
+        var entries = selectedDocs
+            .Select(d =>
+            {
+                var fileName = CreateUniquePackageFileName(d.FileName, d.Id, entryNames);
+                packageFileNames[d.Id] = fileName;
+                return new ZipFileEntryBinary(fileName, pdfs[d.Id]);
+            })
             .ToList();
         var zip = await _blob.CreateZipPackageBinaryAsync(new CreateZipPackageBinaryInput(requestId, entries), ct);
         _logger.LogInformation(
             "Packaging: built zip with {DocCount} PDF document(s) for request {RequestId}.", entries.Count, requestId);
 
         // 2. Upload to blob storage.
-        var blobName = $"{requestId}/release-{DateTime.UtcNow:yyyyMMddHHmmss}.zip";
+        var blobName = $"{requestId}/release-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}.zip";
         await _blob.UploadToBlobStorageAsync(
             new UploadToBlobStorageInput(_blobOpts.ContainerName, blobName, zip.ZipBytesBase64, "application/zip"),
             ct);
@@ -84,10 +110,41 @@ public class PackagingReleaseAgent
 
         // 4. Persist the release package and mark the request ready.
         await _case.CaseSaveReleasePackageAsync(
-            new CaseSaveReleasePackageInput(requestId, blobName, _blobOpts.ContainerName, sas.SasUrl, sas.ExpiresAt),
+            new CaseSaveReleasePackageInput(
+                requestId,
+                blobName,
+                _blobOpts.ContainerName,
+                sas.SasUrl,
+                sas.ExpiresAt,
+                docs.Select(d => new ReleasePackageDocumentSnapshot(
+                    d.Id,
+                    d.FileName,
+                    d.IncludeInRelease ? packageFileNames[d.Id] : null,
+                    d.IncludeInRelease,
+                    d.IncludeInRelease ? Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(pdfs[d.Id])) : null))
+                    .ToList()),
             ct);
         await _case.CaseUpdateStatusAsync(
             new CaseUpdateStatusInput(requestId, nameof(RequestStatus.ReleasePackageReady), "Release package ready."),
             ct);
+    }
+
+    private static string CreateUniquePackageFileName(string sourceFileName, Guid documentId, ISet<string> usedNames)
+    {
+        var safeFileName = Path.GetFileName(sourceFileName.Replace('\\', '/'));
+        var pdfFileName = Path.ChangeExtension(safeFileName, ".pdf");
+        var extension = Path.GetExtension(pdfFileName);
+        var name = Path.GetFileNameWithoutExtension(pdfFileName);
+        var duplicateIndex = 0;
+        while (true)
+        {
+            var suffix = duplicateIndex == 0
+                ? string.Empty
+                : $"-{documentId:N}{(duplicateIndex == 1 ? string.Empty : $"-{duplicateIndex}")}";
+            var maxNameLength = 300 - extension.Length - suffix.Length;
+            var candidate = $"{name[..Math.Min(name.Length, maxNameLength)]}{suffix}{extension}";
+            if (usedNames.Add(candidate)) return candidate;
+            duplicateIndex++;
+        }
     }
 }

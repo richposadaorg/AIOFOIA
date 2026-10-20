@@ -141,7 +141,6 @@ public class FoiaRequestsController : ControllerBase
         var request = await _db.FoiaRequests
             .AsNoTracking()
             .Include(r => r.Documents)
-            .Include(r => r.ReleasePackage)
             .FirstOrDefaultAsync(r => r.Id == id, ct);
 
         if (request is null)
@@ -169,11 +168,21 @@ public class FoiaRequestsController : ControllerBase
             DocumentsFound: request.Documents.Count,
             DocumentsPendingReview: request.Documents.Count(d => d.ReviewStatus == ReviewStatus.Pending || d.ReviewStatus == ReviewStatus.NotStarted),
             DocumentsApproved: request.Documents.Count(d => d.ReviewStatus == ReviewStatus.Approved),
-            DocumentsRejected: request.Documents.Count(d => d.ReviewStatus == ReviewStatus.ManualHandling));
+            DocumentsRejected: request.Documents.Count(d => d.ReviewStatus == ReviewStatus.ManualHandling),
+            DocumentsIncludedInRelease: request.Documents.Count(d => d.IncludeInRelease),
+            DocumentsIncludedNotReady: request.Documents.Count(d => d.IncludeInRelease
+                && (d.ReviewStatus != ReviewStatus.Approved
+                    || d.RedactionStatus != RedactionStatus.Completed
+                    || d.RedactedContent is null)));
 
-        var release = request.ReleasePackage is { } pkg
-            ? new ReleaseDto("Ready", pkg.SasUrl, pkg.SasExpiresAt)
-            : new ReleaseDto("NotReady", null, null);
+        var latestPackage = await _db.ReleasePackages
+            .AsNoTracking()
+            .Where(p => p.FoiaRequestId == id)
+            .OrderByDescending(p => p.Version)
+            .FirstOrDefaultAsync(ct);
+        var release = latestPackage is { } pkg
+            ? new ReleaseDto("Ready", pkg.SasUrl, pkg.SasExpiresAt, pkg.Version)
+            : new ReleaseDto("NotReady", null, null, null);
 
         var dto = new FoiaRequestStatusDto(
             request.Id,
@@ -226,23 +235,27 @@ public class FoiaRequestsController : ControllerBase
             .FirstOrDefaultAsync(r => r.Id == id, ct);
         if (request is null) return NotFound(new { title = "Not Found", status = 404 });
 
-        var notApproved = request.Documents.Any(d => d.ReviewStatus != ReviewStatus.Approved);
-        if (notApproved)
-        {
-            return Conflict(new
-            {
-                title = "Not all documents approved.",
-                status = 409,
-                detail = "Every document must be approved before the release can be approved.",
-            });
-        }
-        if (!request.Documents.Any(d => d.IncludeInRelease))
+        var selectedDocuments = request.Documents.Where(d => d.IncludeInRelease).ToList();
+        if (selectedDocuments.Count == 0)
         {
             return Conflict(new
             {
                 title = "No documents selected for release.",
                 status = 409,
-                detail = "Select at least one approved document before approving the release.",
+                detail = "Select at least one document before approving the release.",
+            });
+        }
+        var notReady = selectedDocuments.Where(d => d.ReviewStatus != ReviewStatus.Approved
+            || d.RedactionStatus != RedactionStatus.Completed
+            || d.RedactedContent is null).ToList();
+        if (notReady.Count > 0)
+        {
+            return Conflict(new
+            {
+                title = "Selected documents are not ready.",
+                status = 409,
+                detail = "Every included document must be redacted and approved. Exclude documents that are not ready for release.",
+                documentIds = notReady.Select(d => d.Id),
             });
         }
 
@@ -259,7 +272,6 @@ public class FoiaRequestsController : ControllerBase
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var request = await _db.FoiaRequests
-            .Include(r => r.ReleasePackage)
             .FirstOrDefaultAsync(r => r.Id == id, ct);
         if (request is null)
         {
@@ -270,10 +282,13 @@ public class FoiaRequestsController : ControllerBase
         // removing the parent row. Storage failures are logged but do not
         // block the database delete (the row would otherwise be orphaned
         // pointing at storage we cannot reach).
-        if (request.ReleasePackage is { } pkg
-            && !string.IsNullOrWhiteSpace(pkg.BlobContainerName)
-            && !string.IsNullOrWhiteSpace(pkg.ZipBlobName))
+        var packages = await _db.ReleasePackages
+            .Where(p => p.FoiaRequestId == id)
+            .ToListAsync(ct);
+        foreach (var pkg in packages)
         {
+            if (string.IsNullOrWhiteSpace(pkg.BlobContainerName) || string.IsNullOrWhiteSpace(pkg.ZipBlobName))
+                continue;
             try
             {
                 await _blob.DeleteBlobAsync(
@@ -299,12 +314,54 @@ public class FoiaRequestsController : ControllerBase
     {
         var pkg = await _db.ReleasePackages
             .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.FoiaRequestId == id, ct);
+            .Include(p => p.Documents)
+            .Where(p => p.FoiaRequestId == id)
+            .OrderByDescending(p => p.Version)
+            .FirstOrDefaultAsync(ct);
         if (pkg is null)
         {
-            return Ok(new ReleasePackageDto(id, "NotReady", null, null, null, null, null));
+            return Ok(new ReleasePackageDto(id, "NotReady", null, null, null, null, null, null, []));
         }
         return Ok(new ReleasePackageDto(
-            id, "Ready", pkg.ZipBlobName, pkg.BlobContainerName, pkg.SasUrl, pkg.SasExpiresAt, pkg.CreatedAt));
+            id,
+            "Ready",
+            pkg.ZipBlobName,
+            pkg.BlobContainerName,
+            pkg.SasUrl,
+            pkg.SasExpiresAt,
+            pkg.CreatedAt,
+            pkg.Version,
+            pkg.Documents.OrderByDescending(d => d.Included).ThenBy(d => d.FileName)
+                .Select(d => new ReleasePackageDocumentDto(
+                    d.DocumentId, d.FileName, d.PackageFileName, d.Included, d.ContentSha256))
+                .ToList()));
+    }
+
+    [HttpGet("{id:guid}/release-packages")]
+    public async Task<IActionResult> ListReleasePackages(Guid id, CancellationToken ct)
+    {
+        var exists = await _db.FoiaRequests.AnyAsync(r => r.Id == id, ct);
+        if (!exists) return NotFound(new { title = "Not Found", status = 404 });
+
+        var packages = await _db.ReleasePackages
+            .AsNoTracking()
+            .Include(p => p.Documents)
+            .Where(p => p.FoiaRequestId == id)
+            .OrderByDescending(p => p.Version)
+            .Select(p => new ReleasePackageDto(
+                id,
+                "Ready",
+                p.ZipBlobName,
+                p.BlobContainerName,
+                p.SasUrl,
+                p.SasExpiresAt,
+                p.CreatedAt,
+                p.Version,
+                p.Documents.OrderByDescending(d => d.Included).ThenBy(d => d.FileName)
+                    .Select(d => new ReleasePackageDocumentDto(
+                        d.DocumentId, d.FileName, d.PackageFileName, d.Included, d.ContentSha256))
+                    .ToList()))
+            .ToListAsync(ct);
+        return Ok(packages);
     }
 }

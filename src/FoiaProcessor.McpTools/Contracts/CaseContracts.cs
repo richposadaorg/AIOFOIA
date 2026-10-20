@@ -70,6 +70,14 @@ public record CaseSaveReleasePackageInput(
     string ZipBlobName,
     string BlobContainerName,
     string SasUrl,
-    DateTime SasExpiresAt);
+    DateTime SasExpiresAt,
+    IReadOnlyList<ReleasePackageDocumentSnapshot> Documents);
+
+public record ReleasePackageDocumentSnapshot(
+    Guid DocumentId,
+    string FileName,
+    string? PackageFileName,
+    bool Included,
+    string? ContentSha256);
 
 public record CaseSaveReleasePackageOutput(Guid PackageId);

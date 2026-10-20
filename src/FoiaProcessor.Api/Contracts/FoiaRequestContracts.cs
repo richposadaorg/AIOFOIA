@@ -33,12 +33,15 @@ public record CountsDto(
     int DocumentsFound,
     int DocumentsPendingReview,
     int DocumentsApproved,
-    int DocumentsRejected);
+    int DocumentsRejected,
+    int DocumentsIncludedInRelease,
+    int DocumentsIncludedNotReady);
 
 public record ReleaseDto(
     string Status,
     string? SasUrl,
-    DateTime? SasExpiresAt);
+    DateTime? SasExpiresAt,
+    int? PackageVersion);
 
 public record AuditEventDto(
     DateTime Timestamp,
@@ -122,4 +125,13 @@ public record ReleasePackageDto(
     string? BlobContainerName,
     string? SasUrl,
     DateTime? SasExpiresAt,
-    DateTime? CreatedAt);
+    DateTime? CreatedAt,
+    int? Version,
+    IReadOnlyList<ReleasePackageDocumentDto> Documents);
+
+public record ReleasePackageDocumentDto(
+    Guid DocumentId,
+    string FileName,
+    string? PackageFileName,
+    bool Included,
+    string? ContentSha256);

@@ -79,6 +79,11 @@ export default function ReviewListPage() {
             )}
 
             {data && data.documents.length > 0 && (
+                <>
+                <p className="text-sm text-midnight-300">
+                    Package composition: {data.documents.filter((d) => d.includeInRelease).length} included,{" "}
+                    {data.documents.filter((d) => !d.includeInRelease).length} excluded. Included documents must be approved before a package can be created.
+                </p>
                 <div className="overflow-hidden rounded-2xl border border-midnight-800 bg-midnight-900/60 shadow-card">
                     <div className="overflow-x-auto">
                         <table className="min-w-full divide-y divide-midnight-800 text-sm">
@@ -137,6 +142,7 @@ export default function ReviewListPage() {
                         </table>
                     </div>
                 </div>
+                </>
             )}
         </div>
     );
