@@ -4,7 +4,7 @@
 **Base URL (local)**: `http://localhost:5000`
 **Base URL (Azure)**: Container App ingress URL (single host serves API + SPA)
 
-All endpoints return `application/json`. All timestamps are ISO-8601 UTC. All ids are GUID strings.
+All endpoints return `application/json` unless otherwise noted. All timestamps are ISO-8601 UTC. All ids are GUID strings.
 
 ---
 
@@ -137,6 +137,26 @@ common error shape on failure.
 ```
 
 ---
+
+## Document PDF preview
+
+`GET /api/documents/{id}/pdf?version=redacted`
+
+Requires the existing `FoiaAnalyst` authorization policy. `version` accepts
+`original` or `redacted` (default). Returns `200 OK` with `application/pdf`,
+rendered by `PdfRenderer` from the selected stored text with automatic pagination
+and page numbers. This is a text rendition, not the original file's layout.
+The response is marked `Cache-Control: no-store`.
+
+Returns `400` for an invalid version, `404` for an unknown document, or `409`
+when redacted content is not yet available. It never falls back to original
+content for a redacted preview.
+
+The document review page fetches the PDF as an authenticated blob for its
+original/redacted iframe preview, releases object URLs when replaced or unmounted,
+and reloads both review data and preview after adding, editing, or removing a
+redaction. The request / release overview link opens `/requests/{requestId}`.
+Release package composition is unchanged.
 
 ## 4. Get document before/after review
 

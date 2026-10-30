@@ -1,3 +1,4 @@
+using FoiaProcessor.Agents.Infrastructure;
 using FoiaProcessor.Agents.Workflow;
 using FoiaProcessor.Api.Contracts;
 using FoiaProcessor.Data;
@@ -54,6 +55,23 @@ public class DocumentsController : ControllerBase
             doc.ReviewStatus.ToString(),
             doc.IncludeInRelease);
         return Ok(dto);
+    }
+
+    [HttpGet("{id:guid}/pdf")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> GetPdf(Guid id, [FromQuery] string version = "redacted",
+        CancellationToken ct = default)
+    {
+        if (version != "original" && version != "redacted")
+            return BadRequest(new { title = "Version must be original or redacted.", status = 400 });
+
+        var doc = await _db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id, ct);
+        if (doc is null) return NotFound(new { title = "Not Found", status = 404 });
+        if (version == "redacted" && doc.RedactedContent is null)
+            return Conflict(new { title = "Redacted content is not yet available.", status = 409 });
+
+        var content = version == "original" ? doc.OriginalContent : doc.RedactedContent!;
+        return File(PdfRenderer.Render(doc.FileName, content), "application/pdf");
     }
 
     [HttpPost("{id:guid}/approve")]
