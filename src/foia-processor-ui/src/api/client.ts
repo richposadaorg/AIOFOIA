@@ -25,7 +25,7 @@ export class ApiValidationError extends Error {
     }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, responseType: "json" | "blob" = "json"): Promise<T> {
     const headers = new Headers(init?.headers ?? {});
     if (!headers.has("Content-Type")) {
         headers.set("Content-Type", "application/json");
@@ -51,6 +51,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         throw new Error(`HTTP ${res.status}: ${text}`);
     }
     if (res.status === 204) return undefined as T;
+    if (responseType === "blob") return (await res.blob()) as T;
     return (await res.json()) as T;
 }
 
@@ -82,6 +83,13 @@ export const getDocuments = (id: string) =>
 
 export const getDocumentReview = (id: string) =>
     request<DocumentReview>(`/api/documents/${id}/review`);
+
+export const getDocumentPdf = (id: string, version: "original" | "redacted", signal?: AbortSignal) =>
+    request<Blob>(`/api/documents/${id}/pdf?version=${version}`, {
+        signal,
+        cache: "no-store",
+        headers: { Accept: "application/pdf" },
+    }, "blob");
 
 export const approveDocument = (id: string, comments?: string) =>
     request<{ id: string; reviewStatus: string; approvedAt: string }>(`/api/documents/${id}/approve`, {

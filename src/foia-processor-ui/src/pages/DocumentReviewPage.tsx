@@ -4,6 +4,7 @@ import {
     approveDocument,
     addRedaction,
     deleteDocument,
+    getDocumentPdf,
     getDocumentReview,
     removeRedaction,
     rejectDocument,
@@ -40,6 +41,9 @@ export default function DocumentReviewPage() {
     const [error, setError] = useState<string | null>(null);
     const [comments, setComments] = useState("");
     const [busy, setBusy] = useState(false);
+    const [pdfVersion, setPdfVersion] = useState<"original" | "redacted">("redacted");
+    const [pdf, setPdf] = useState<{ doc: DocumentReview; version: typeof pdfVersion; url: string } | null>(null);
+    const [pdfError, setPdfError] = useState<string | null>(null);
     const [newRedaction, setNewRedaction] = useState({ piiType: "Name", originalText: "", replacementText: "[REDACTED]" });
     const navigate = useNavigate();
 
@@ -66,10 +70,43 @@ export default function DocumentReviewPage() {
 
     useEffect(() => {
         if (!documentId) return;
+        let cancelled = false;
+        setDoc(null);
+        setError(null);
         getDocumentReview(documentId)
-            .then(setDoc)
-            .catch((e) => setError((e as Error).message));
+            .then((data) => { if (!cancelled) setDoc(data); })
+            .catch((e) => { if (!cancelled) setError((e as Error).message); });
+        return () => { cancelled = true; };
     }, [documentId]);
+
+    useEffect(() => {
+        setPdf(null);
+        setPdfError(null);
+        if (!doc || doc.id !== documentId || busy ||
+            (pdfVersion === "redacted" && doc.redactedContent === null)) return;
+        const controller = new AbortController();
+        let url: string | undefined;
+        getDocumentPdf(doc.id, pdfVersion, controller.signal)
+            .then((blob) => {
+                if (controller.signal.aborted) return;
+                url = URL.createObjectURL(blob);
+                setPdf({ doc, version: pdfVersion, url });
+            })
+            .catch((e) => {
+                if (!controller.signal.aborted) setPdfError((e as Error).message);
+            });
+        return () => {
+            controller.abort();
+            if (url) URL.revokeObjectURL(url);
+        };
+    }, [doc, documentId, pdfVersion, busy]);
+
+    async function refreshReview() {
+        if (!documentId) return;
+        setDoc(null);
+        setError(null);
+        setDoc(await getDocumentReview(documentId));
+    }
 
     async function onApprove() {
         if (!documentId) return;
@@ -123,8 +160,8 @@ export default function DocumentReviewPage() {
         if (!documentId || !newRedaction.originalText.trim() || !newRedaction.replacementText.trim()) return;
         setBusy(true);
         try {
-            const added = await addRedaction(documentId, newRedaction);
-            setDoc((current) => current && { ...current, redactions: [...current.redactions, added] });
+            await addRedaction(documentId, newRedaction);
+            await refreshReview();
             setNewRedaction({ ...newRedaction, originalText: "" });
         } catch (e) {
             setError((e as Error).message);
@@ -140,11 +177,7 @@ export default function DocumentReviewPage() {
         setBusy(true);
         try {
             await updateRedaction(documentId, redactionId, replacementText);
-            setDoc((current) => current && {
-                ...current,
-                redactions: current.redactions.map((r) =>
-                    r.id === redactionId ? { ...r, replacementText } : r),
-            });
+            await refreshReview();
         } catch (e) {
             setError((e as Error).message);
         } finally {
@@ -157,10 +190,7 @@ export default function DocumentReviewPage() {
         setBusy(true);
         try {
             await removeRedaction(documentId, redactionId);
-            setDoc((current) => current && {
-                ...current,
-                redactions: current.redactions.filter((r) => r.id !== redactionId),
-            });
+            await refreshReview();
         } catch (e) {
             setError((e as Error).message);
         } finally {
@@ -206,7 +236,15 @@ export default function DocumentReviewPage() {
 
     return (
         <div className="space-y-6">
-            {backLink}
+            <nav className="flex flex-wrap items-center gap-4" aria-label="Document navigation">
+                {backLink}
+                <Link
+                    to={`/requests/${doc.foiaRequestId}`}
+                    className="text-sm font-medium text-indigo-300 hover:text-indigo-200"
+                >
+                    Request / release overview
+                </Link>
+            </nav>
 
             {error && (
                 <div
@@ -235,6 +273,45 @@ export default function DocumentReviewPage() {
                     <StatusBadge status={doc.reviewStatus} />
                 </div>
             </header>
+
+            <section className="rounded-2xl border border-midnight-800 bg-midnight-900/60 p-6 shadow-card">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <h2 className="text-base font-semibold text-white">Paginated PDF preview</h2>
+                    <div className="flex gap-2" role="group" aria-label="PDF version">
+                        {(["original", "redacted"] as const).map((version) => (
+                            <button
+                                key={version}
+                                type="button"
+                                aria-pressed={pdfVersion === version}
+                                onClick={() => setPdfVersion(version)}
+                                className={`rounded-md border px-3 py-2 text-sm font-medium ${
+                                    pdfVersion === version
+                                        ? "border-indigo-400 bg-indigo-500 text-white"
+                                        : "border-midnight-700 text-midnight-200 hover:text-white"
+                                }`}
+                            >
+                                {version === "original" ? "Original" : "Redacted"}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <p className="mt-2 text-sm text-midnight-300">
+                    Generated from extracted document text, not the original file layout.
+                </p>
+                {pdfError ? (
+                    <p role="alert" className="mt-4 text-sm text-rose-200">{pdfError}</p>
+                ) : pdfVersion === "redacted" && doc.redactedContent === null ? (
+                    <p role="status" className="mt-4 text-sm text-midnight-300">Redacted content is not yet generated.</p>
+                ) : pdf && pdf.doc === doc && pdf.version === pdfVersion && !busy ? (
+                    <iframe
+                        title={`${pdfVersion === "original" ? "Original" : "Redacted"} PDF: ${doc.fileName}`}
+                        src={pdf.url}
+                        className="mt-4 h-[640px] w-full rounded-lg border border-midnight-700 bg-white"
+                    />
+                ) : (
+                    <p role="status" className="mt-4 text-sm text-midnight-300">Loading PDF preview…</p>
+                )}
+            </section>
 
             {/* Content panes */}
             <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
